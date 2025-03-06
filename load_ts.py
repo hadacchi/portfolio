@@ -1,24 +1,10 @@
-import re
-import toml
-import pandas as pd
 import datetime
-import copy
-import numpy as np
+import re
+import pandas as pd
 
 import yfinance as yf
 
-from statsmodels.tsa.seasonal import seasonal_decompose
-
-import seaborn as sns
-import matplotlib.pyplot as plt
-
-from pptx import Presentation
-from pptx.util import Cm, Pt, Inches  # 単位変換機能
-from pptx.dml.color import RGBColor   # 色指定用
-
-from deal import *
-
-def pick_yfinance_data(tickers, start='1970-01-01', end=None, join='inner')):
+def pick_yfinance_data(tickers, start='1970-01-01', end=None, join='inner'):
     '''yfinanceからtickerリストのデータを取得し結合してDataFrameとして返却する
 
     Parameters
@@ -40,7 +26,6 @@ def pick_yfinance_data(tickers, start='1970-01-01', end=None, join='inner')):
     '''
 
     yf_tickers = {key: yf.Ticker(key) for key in tickers}
-    #data = {}
     close_list = []
     dividend_list = []
     key_list = []
@@ -50,21 +35,17 @@ def pick_yfinance_data(tickers, start='1970-01-01', end=None, join='inner')):
         close_list.append(datum['Close'])
         dividend_list.append(datum['Dividends'])
         key_list.append(key)
-    for key, datum in data.items():
-        close_list.append(datum['Close'])
-        dividend_list.append(datum['Dividends'])
-        key_list.append(key)
     # 終値の時系列
     close_df = pd.concat(close_list, axis=1, join=join)
     close_df.columns = key_list
 
     # 分配金の時系列
-    dividend_df = pd.concat(dividend_list, axis=1, join='inner')
+    dividend_df = pd.concat(dividend_list, axis=1, join=join)
     dividend_df.columns = key_list
 
     # 分配金の額面に対する率
     #div_rate_df = dividends_df/close_df
-    return close_df, dividend_df
+    return close_df.loc[start:end], dividend_df.loc[start:end]
 
 def to_date(datestr, date_splitter=re.compile('[年月日/]')):
     '''input is date string joined by date_splitter
@@ -79,9 +60,9 @@ def to_date(datestr, date_splitter=re.compile('[年月日/]')):
     datetime : datetime.datetime
     '''
     date_list = date_splitter.split(datestr)
-    return datetime.date(*list(map(int, date_list[:3])))
+    return datetime.datetime(*list(map(int, date_list[:3])))
 
-def pick_csv_data(names, start='1970-01-01', end=None, join='inner'):
+def pick_csv_data(names, start='1970-01-01', end=None):
     '''csvからデータを取得し結合してDataFrameとして返却する
     csvの形式は、投信協会のCSVデータとし、文字コードは932
 
@@ -114,12 +95,20 @@ def pick_csv_data(names, start='1970-01-01', end=None, join='inner'):
     data_column = '基準価額(円)'
     div_column = '分配金'
 
-    data = {}
+    close_data = {}
+    dividend_data = {}
 
     for name in names:
         datum = pd.read_csv(name+'.csv', encoding='932')
         datum[index_column] = datum[index_column].apply(to_date)
-        data[name] = datum.set_index(index_column)[data_column]
-        data[name].name = name
-        div
-    return series
+        close_data[name] = datum.set_index(index_column)[data_column]
+        dividend_data[name] = datum.set_index(index_column)[div_column]
+
+    # 終値の時系列
+    close_df = pd.DataFrame(close_data).dropna()
+
+    # 分配金の時系列
+    # 現状，分配金のあるファンドが落とした範囲にはなかったので省略
+    #dividend_df = pd.DataFrame(dividend_data)
+
+    return close_df.loc[start:end], None  #, dividend_df.loc[start:end]
