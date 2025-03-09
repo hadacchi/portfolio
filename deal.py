@@ -9,7 +9,7 @@ def buy_fund(target_df, t):
     return tmp_df/tmp_df.head(1).values
 
 def rebalance_buy(assets, portfolio, buy_amount = 1):
-    '''購入結果がportfolioの比になるよう購入額を調整する
+    '''購入結果がportfolioの比になるよう購入額を調整し購入比率を返却する
 
     Parameters
     ----------
@@ -36,7 +36,7 @@ def rebalance_buy(assets, portfolio, buy_amount = 1):
     return delta
 
 def rebalance(assets, principle, portfolio):
-    '''リバランスをちゃんとやるための関数
+    '''リバランスをちゃんとやるための関数，2資産まで対応
     この関数が呼ばれた時点で，リバランス条件を満たしており，この関数はportfolioにピッタリ合わせることを目的とする
     本当は、売却益の TAX_RATE とするべきだが、現状は売却総額の TAX_RATEになっている
 
