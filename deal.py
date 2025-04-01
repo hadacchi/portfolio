@@ -36,57 +36,58 @@ def rebalance_buy(assets, portfolio, buy_amount = 1):
     return delta
 
 def rebalance(assets, principle, portfolio):
-    '''リバランスをちゃんとやるための関数，2資産まで対応
-    この関数が呼ばれた時点で，リバランス条件を満たしており，この関数はportfolioにピッタリ合わせることを目的とする
-    本当は、売却益の TAX_RATE とするべきだが、現状は売却総額の TAX_RATEになっている
+    '''任意の数の資産に対応したリバランス関数。
+    利益が出ている資産の売却に税金を考慮して理想のポートフォリオに近づける。
 
     Parameters
     ----------
     assets : pandas.Series
-        資産時系列のDataFrameのうち，リバランスしたい時刻インデックスのスライス
-        資産が N 個の時，assets.size == N
+        リバランス対象時点の各資産の評価額
     principle : pandas.Series
-        元本
+        各資産の元本
     portfolio : pandas.Series
-        columns が資産時系列の名前, value がその資産のウェイトであり正規化済のもの
+        正規化された理想のポートフォリオ比率
+
+    Returns
+    -------
+    sell_buy : pandas.Series
+        各資産の売買額（正の値は購入、負の値は売却）
+    total_tax : float
+        売却益に対する課税合計
     '''
 
     t = assets.name
+    total_value = assets.sum()
 
-    # 利益率計算
-    benefit = assets-principle
-    bene_rate = (assets/principle-1)
+    # 理想の資産配分額
+    target_values = total_value * portfolio
 
-    # 逆比の差
-    r2x1_r1x2 = portfolio.iloc[1]*assets.iloc[0] - portfolio.iloc[0]*assets.iloc[1]
+    # 売買差額の計算
+    delta = target_values - assets
 
-    if r2x1_r1x2>0:
-        # 1の資産を売って2の資産を買う
-        if benefit.iloc[0]>0:
-            # 利益が出てたら税金を考慮して売却額を決定
-            dx1 = r2x1_r1x2/(1-portfolio.iloc[0]*TAX_RATE*benefit.iloc[0]/assets.iloc[0])  # 売却額
-            tax = benefit.iloc[0]*dx1/assets.iloc[0]*TAX_RATE  # 税額
-            dx2 = dx1 - tax  # 税引き後受け渡し額=購入額
+    sell_buy = pd.Series(0.0, index=assets.index)
+    total_tax = 0.0
 
-            sell_buy = pd.Series([-dx1,dx2],name=t)
-        else:
-            # 利益が出てない時は税金を無視して売却額を決定
-            tax = 0
-            sell_buy = pd.Series([-r2x1_r1x2,r2x1_r1x2],name=t)
-        sell_buy.index=assets.index
-    else:
-        # 2の資産を売って1の資産を買う
-        if benefit.iloc[1]>0:
-            # 利益が出てたら税金を考慮して売却額を決定
-            dx2 = -r2x1_r1x2/(1-portfolio.iloc[1]*TAX_RATE*benefit.iloc[1]/assets.iloc[1])  # 売却額
-            tax = benefit.iloc[1]*dx2/assets.iloc[1]*TAX_RATE  # 税額
-            dx1 = dx2 - tax  # 税引き後受け渡し額=購入額
+    # まず利益の出ている資産について、売却側の税金を考慮
+    for asset in assets.index:
+        if delta[asset] < 0:
+            profit = assets[asset] - principle[asset]
+            sell_amount = -delta[asset]
+            if profit > 0:
+                # 課税対象利益に対する税額計算
+                taxable_ratio = profit / assets[asset]
+                tax = sell_amount * taxable_ratio * TAX_RATE
+                sell_amount += tax
+                total_tax += tax
+            sell_buy[asset] = -sell_amount
 
-            sell_buy = pd.Series([dx1,-dx2],name=t)
-        else:
-            # 利益が出てない時は税金を無視して売却額を決定
-            tax = 0
-            sell_buy = pd.Series([-r2x1_r1x2,r2x1_r1x2],name=t)
-        sell_buy.index=assets.index
+    # 売却で得た金額を再配分（税金控除後の資金を利用）
+    available_cash = -sell_buy[sell_buy < 0].sum() - total_tax
+    buy_targets = delta[delta > 0]
+    if not buy_targets.empty:
+        buy_ratios = buy_targets / buy_targets.sum()
+        for asset in buy_targets.index:
+            sell_buy[asset] = available_cash * buy_ratios[asset]
 
-    return sell_buy, tax.sum()
+    sell_buy.name = t
+    return sell_buy, total_tax
